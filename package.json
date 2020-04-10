@@ -1,0 +1,21 @@
+{
+  "name": "sbs-comision-afp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "sbs-comision-afp"
+  },
+  "author": "Christian Teran Montero",
+  "license": "ISC",
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.3",
+    "puppeteer": "^2.1.1",
+    "request": "^2.88.2"
+  }
+}
