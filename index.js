@@ -1,45 +1,27 @@
-const cheerio = require('cheerio');
-const puppeteer = require('puppeteer');
+process.on('unhandledRejection', (err) => {
+  console.error(err);
+  process.exit(1);
+});
 
-const BASE_URL = "https://www.sbs.gob.pe/app/spp/empleadores/comisiones_spp/Paginas/comision_prima.aspx";
-const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.70 Safari/537.36";
+const dotenv = require('dotenv');
+const docopt = require('docopt');
+const cheerio = require('cheerio');
+const msg = require('./lib/msg');
+const headless = require('./lib/headless');
+const selector = require('./lib/selector');
+const helper = require('./lib/helper');
+
+dotenv.config();
+
+const usage = `
+Usage:
+  start [--dry-run] [<pubId>]
+Options:
+  --dry-run     print changes to console only, do no modify placements
+`;
 
 (async () => {
-  const browser = await puppeteer.launch();
-  const page = await browser.newPage();
-  await page.setUserAgent(USER_AGENT);
-  await page.goto(BASE_URL, {waitUntil: 'networkidle2'});
-  const html = await page.content();
-  var $ = cheerio.load(html);
-
-  const periods = $("select#cboPeriodo option").map(function() {
-    if ($(this).val() != "") {
-      return $(this).val();
-    }
-  }).get();
-
-  let data = [];
-  for (i = 0; i < periods.length; i++) {
-
-    const period = periods[i];
-
-    await page.select('#cboPeriodo', period);
-    page.click('#btnConsultar');
-
-    await page.waitForNavigation({waitUntil: 'load'});
-
-    const html1 = await page.content();
-    $ = cheerio.load(html1);
-
-    data.push(getPeriodoData(period, $));
-  }
-
-
-  data = formatData(data);
-  const colab = formatFlatData(data);
-  console.log(JSON.stringify(colab));
-  await browser.close();
-})();
+});
 
 function formatFlatData(data) {
   let flat = [];
@@ -56,29 +38,6 @@ function formatFlatData(data) {
   });
 
   return flat;
-}
-
-function getPeriodoData(periodo, $) {
-  const data = {};
-  data[periodo] = [];
-  $('body > center > table > tbody > tr > td > center  > table .JER_filaContenido').each(function(i, e) {
-    const row = [];
-    $("td", this).each(function(y, z) {
-      row.push($(this).text().trim());
-    });
-    data[periodo].push(row);
-  });
-  return data;
-}
-
-function formatData(data) {
-  return data.map((periods) => {
-    return Object.keys(periods).reduce((fp, period) => {
-      const rows = periods[period];
-      fp[period] = formatRows(rows, isComisionMixta(period));
-      return fp;
-    }, {});
-  });
 }
 
 function isComisionMixta(period) {
@@ -132,3 +91,40 @@ function headerNoMixta(row) {
     [REMUNERACION_MAXIMA]: row[5]
   }
 }
+
+const scraping = async(pubId, dryRun) => {
+  const page = await headless.getComisionPage();
+  const html = await page.content();
+
+  const periods = selector.getPeriods(html);
+  console.log(periods);
+
+  const data = [];
+  for (i = 0; i < periods.length; i++) {
+
+    const period = periods[i];
+    const periodPage = await headless.getPageByPeriod(page, period);
+    const periodHtml = await periodPage.content();
+    const periodData = selector.getDataByPeriod(periodHtml, period);
+
+    data.push(periodData);
+  }
+
+  data = helper.formatData(data);
+
+  const colab = formatFlatData(data);
+  console.log(JSON.stringify(colab));
+  // await browser.close();
+};
+
+const options = docopt.docopt(usage);
+const pubId = options['<pubId>'] || undefined;
+dryRun = options['--dry-run'] || false;
+
+scraping(pubId, dryRun).then(() => {
+  msg.bgGreen('Done!');
+  process.exit(0);
+}).catch(e => {
+  console.log(e);
+  process.exit(1);
+});
